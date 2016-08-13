@@ -122,7 +122,8 @@ impl AlphaBatcher {
                 let sc = &ctx.layer_store[layer_index.0];
                 layer_ubo.push(PackedLayer {
                     transform: sc.transform,
-                    inv_transform: sc.transform.invert(),
+                    // FIXME: Do something better if transform is not invertible - or prove that it always is.
+                    inv_transform: sc.transform.inverse().unwrap(),
                     screen_vertices: sc.xf_rect.as_ref().unwrap().vertices,
                     world_clip_rect: sc.world_clip_rect.unwrap(),
                 });
@@ -2414,14 +2415,14 @@ impl FrameBuilder {
 
             if layer.can_contribute_to_scene() {
                 let scroll_layer = &layer_map[&layer.scroll_layer_id];
-                let offset_transform = Matrix4D::identity().translate(layer.local_offset.x,
-                                                                      layer.local_offset.y,
-                                                                      0.0);
+                let offset_transform = Matrix4D::identity().pre_translated(layer.local_offset.x,
+                                                                           layer.local_offset.y,
+                                                                           0.0);
                 let transform = scroll_layer.world_transform
                                             .as_ref()
                                             .unwrap()
-                                            .mul(&layer.local_transform)
-                                            .mul(&offset_transform);
+                                            .pre_mul(&layer.local_transform)
+                                            .pre_mul(&offset_transform);
                 layer.transform = transform;
                 layer.xf_rect = Some(TransformedRect::new(&layer.local_rect,
                                                           &transform,

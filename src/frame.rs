@@ -251,31 +251,33 @@ impl Frame {
                     None
                 }
                 ScrollLayerInfo::Scrollable(..) => {
-                    let inv = layer.viewport_transform.invert();
-                    let z0 = -10000.0;
-                    let z1 =  10000.0;
+                    layer.viewport_transform.inverse().and_then(|inv| {
+                        let z0 = -10000.0;
+                        let z1 =  10000.0;
 
-                    let p0 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z0, 1.0));
-                    let p0 = Point3D::new(p0.x / p0.w,
-                                          p0.y / p0.w,
-                                          p0.z / p0.w);
-                    let p1 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z1, 1.0));
-                    let p1 = Point3D::new(p1.x / p1.w,
-                                          p1.y / p1.w,
-                                          p1.z / p1.w);
+                        let p0 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z0, 1.0));
+                        let p0 = Point3D::new(p0.x / p0.w,
+                                              p0.y / p0.w,
+                                              p0.z / p0.w);
+                        let p1 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z1, 1.0));
+                        let p1 = Point3D::new(p1.x / p1.w,
+                                              p1.y / p1.w,
+                                              p1.z / p1.w);
 
-                    let is_unscrollable = layer.layer_size.width <= layer.viewport_rect.size.width &&
-                        layer.layer_size.height <= layer.viewport_rect.size.height;
-                    if is_unscrollable {
-                        None
-                    } else {
-                        let result = ray_intersects_rect(p0, p1, layer.viewport_rect);
-                        if result {
-                            Some(scroll_layer_id)
-                        } else {
+                        let is_unscrollable = layer.layer_size.width <= layer.viewport_rect.size.width &&
+                            layer.layer_size.height <= layer.viewport_rect.size.height;
+                        if is_unscrollable {
                             None
+                        } else {
+                            let result = ray_intersects_rect(p0, p1, layer.viewport_rect);
+                            if result {
+                                Some(scroll_layer_id)
+                            } else {
+                                None
+                            }
                         }
-                    }
+                    })
+                    
                 }
             }
         })
@@ -591,8 +593,8 @@ impl Frame {
 
                         let iframe_fixed_layer_id = ScrollLayerId::create_fixed(pipeline.pipeline_id);
 
-                        let viewport_transform = info.world_transform.mul(&info.local_perspective)
-                                                                     .mul(&info.local_transform);
+                        let viewport_transform = info.world_transform.pre_mul(&info.local_perspective)
+                                                                     .pre_mul(&info.local_transform);
 
                         // TODO(servo/servo#9983, pcwalton): Support rounded rectangle clipping.
                         // Currently we take the main part of the clip rect only.
@@ -697,7 +699,7 @@ impl Frame {
                     stacking_context.transform
                                     .invert()
                                     .transform_rect(&parent_info.current_clip_rect)
-                                    .translate(&-stacking_context.bounds.origin)
+                                    .pre_translated(&-stacking_context.bounds.origin)
                                     .intersection(&stacking_context.overflow)
                 }
             };*/
@@ -723,24 +725,24 @@ impl Frame {
                 // Build local and world space transform
                 let origin = parent_info.offset_from_current_layer + stacking_context.bounds.origin;
                 //let local_transform = if composition_operations.is_empty() {
-                //    Matrix4D::identity().translate(origin.x, origin.y, 0.0)
-                //                        .mul(&stacking_context.transform)
-                //                        .translate(-origin.x, -origin.y, 0.0)
+                //    Matrix4D::identity().pre_translated(origin.x, origin.y, 0.0)
+                //                        .pre_mul(&stacking_context.transform)
+                //                        .pre_translated(-origin.x, -origin.y, 0.0)
                 //} else {
                 //    Matrix4D::identity()
                 //};
-                let local_transform = Matrix4D::identity().translate(origin.x, origin.y, 0.0)
-                                                          .mul(&stacking_context.transform)
-                                                          .translate(-origin.x, -origin.y, 0.0);
+                let local_transform = Matrix4D::identity().pre_translated(origin.x, origin.y, 0.0)
+                                                          .pre_mul(&stacking_context.transform)
+                                                          .pre_translated(-origin.x, -origin.y, 0.0);
 
                 // Build local space perspective transform
-                let local_perspective = Matrix4D::identity().translate(origin.x, origin.y, 0.0)
-                                                            .mul(&stacking_context.perspective)
-                                                            .translate(-origin.x, -origin.y, 0.0);
+                let local_perspective = Matrix4D::identity().pre_translated(origin.x, origin.y, 0.0)
+                                                            .pre_mul(&stacking_context.perspective)
+                                                            .pre_translated(-origin.x, -origin.y, 0.0);
 
                 // Build world space transform
-                let world_transform = parent_info.world_transform.mul(&local_perspective)
-                                                                 .mul(&local_transform);
+                let world_transform = parent_info.world_transform.pre_mul(&local_perspective)
+                                                                 .pre_mul(&local_transform);
 
                 /*
                 let viewport_rect = if composition_operations.is_empty() {
@@ -774,8 +776,8 @@ impl Frame {
                     (ScrollPolicy::Scrollable, Some(scroll_layer_id)) => {
                         debug_assert!(!self.layers.contains_key(&scroll_layer_id));
                         let mut viewport_transform =
-                            world_transform.mul(&parent_info.local_perspective)
-                                           .mul(&parent_info.local_transform);
+                            world_transform.pre_mul(&parent_info.local_perspective)
+                                           .pre_mul(&parent_info.local_transform);
                         let mut viewport_rect = parent_info.viewport_rect;
 
                         if let ScrollLayerInfo::Scrollable(index) = scroll_layer_id.info {
@@ -849,15 +851,15 @@ impl Frame {
             match self.layers.get_mut(&layer_id) {
                 Some(layer) => {
                     let layer_transform_for_children =
-                        parent_world_transform.mul(&layer.local_transform)
-                                              .translate(layer.scrolling.offset.x,
-                                                         layer.scrolling.offset.y,
-                                                         0.0);
-                    layer.viewport_transform = parent_world_transform.mul(&layer.local_transform);
+                        parent_world_transform.pre_mul(&layer.local_transform)
+                                              .pre_translated(layer.scrolling.offset.x,
+                                                              layer.scrolling.offset.y,
+                                                              0.0);
+                    layer.viewport_transform = parent_world_transform.pre_mul(&layer.local_transform);
                     layer.world_transform =
-                        Some(layer_transform_for_children.translate(layer.world_origin.x,
-                                                                    layer.world_origin.y,
-                                                                    0.0));
+                        Some(layer_transform_for_children.pre_translated(layer.world_origin.x,
+                                                                         layer.world_origin.y,
+                                                                         0.0));
                     (layer_transform_for_children, layer.children.clone())
                 }
                 None => return,

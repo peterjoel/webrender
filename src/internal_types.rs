@@ -490,7 +490,7 @@ pub struct RectColors {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RectUv<T> {
+pub struct RectUv<T: Copy> {
     pub top_left: Point2D<T>,
     pub top_right: Point2D<T>,
     pub bottom_left: Point2D<T>,
