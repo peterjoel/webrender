@@ -250,31 +250,32 @@ impl Frame {
                     None
                 }
                 ScrollLayerInfo::Scrollable(..) => {
-                    let inv = layer.viewport_transform.inverse().unwrap();
-                    let z0 = -10000.0;
-                    let z1 =  10000.0;
+                    layer.viewport_transform.inverse().and_then(|inv| {
+                        let z0 = -10000.0;
+                        let z1 =  10000.0;
 
-                    let p0 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z0, 1.0));
-                    let p0 = Point3D::new(p0.x / p0.w,
-                                          p0.y / p0.w,
-                                          p0.z / p0.w);
-                    let p1 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z1, 1.0));
-                    let p1 = Point3D::new(p1.x / p1.w,
-                                          p1.y / p1.w,
-                                          p1.z / p1.w);
+                        let p0 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z0, 1.0));
+                        let p0 = Point3D::new(p0.x / p0.w,
+                                            p0.y / p0.w,
+                                            p0.z / p0.w);
+                        let p1 = inv.transform_point4d(&Point4D::new(cursor.x, cursor.y, z1, 1.0));
+                        let p1 = Point3D::new(p1.x / p1.w,
+                                            p1.y / p1.w,
+                                            p1.z / p1.w);
 
-                    let is_unscrollable = layer.layer_size.width <= layer.viewport_rect.size.width &&
-                        layer.layer_size.height <= layer.viewport_rect.size.height;
-                    if is_unscrollable {
-                        None
-                    } else {
-                        let result = ray_intersects_rect(p0, p1, layer.viewport_rect);
-                        if result {
-                            Some(scroll_layer_id)
-                        } else {
+                        let is_unscrollable = layer.layer_size.width <= layer.viewport_rect.size.width &&
+                            layer.layer_size.height <= layer.viewport_rect.size.height;
+                        if is_unscrollable {
                             None
+                        } else {
+                            let result = ray_intersects_rect(p0, p1, layer.viewport_rect);
+                            if result {
+                                Some(scroll_layer_id)
+                            } else {
+                                None
+                            }
                         }
-                    }
+                    })
                 }
             }
         })
